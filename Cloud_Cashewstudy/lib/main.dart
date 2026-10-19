@@ -16,7 +16,7 @@ void main() async {
   // 2. Khởi tạo Supabase
   await Supabase.initialize(
     url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
+    publishableKey: AppConstants.supabasePublishableKey,
   );
 
   // 3. Khởi tạo dịch vụ Firebase cho các tính năng đám mây

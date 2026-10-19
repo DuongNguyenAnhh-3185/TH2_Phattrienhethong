@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 /// Áp dụng bảng màu và chuẩn thiết kế theo phong cách Cashew
 class AppConstants {
   static const String supabaseUrl = 'https://mfqnhwzpgoavfvayogib.supabase.co';
-  static const String supabaseAnonKey =
+  static const String supabasePublishableKey =
       'sb_publishable_dhnanMnjuIhicYOP041Sbg_Ft2YulxT';
 
   static const String appName = 'CashewDoc';
