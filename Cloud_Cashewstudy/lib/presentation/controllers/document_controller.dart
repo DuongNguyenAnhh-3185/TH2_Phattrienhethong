@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../../core/constants/app_constants.dart';
 import '../../domain/entities/document_entity.dart';
 import '../../domain/entities/subject_entity.dart';
@@ -21,6 +23,8 @@ class DocumentController extends ChangeNotifier {
   bool _isLoading = true;
 
   String _searchQuery = '';
+  String? _selectedTag;
+  List<String> _availableTags = [];
   String? _selectedSubjectFk;
   String? _selectedDocumentType;
   String? _selectedStudyStatus;
@@ -38,6 +42,8 @@ class DocumentController extends ChangeNotifier {
   List<SubjectEntity> get subjects => _subjects;
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
+  String? get selectedTag => _selectedTag;
+  List<String> get availableTags => _availableTags;
   String? get selectedSubjectFk => _selectedSubjectFk;
   String? get selectedDocumentType => _selectedDocumentType;
   String? get selectedStudyStatus => _selectedStudyStatus;
@@ -54,7 +60,18 @@ class DocumentController extends ChangeNotifier {
     });
 
     // Lắng nghe thay đổi tự động từ DocumentDao (Reactive Stream kiểu Cashew)
-    _docSub = documentService.watchAllDocuments().listen((_) async {
+    _docSub = documentService.watchAllDocuments().listen((documents) async {
+      final tags = <String, String>{};
+      for (final document in documents) {
+        for (final rawTag in document.tags.split(',')) {
+          final tag = rawTag.trim();
+          if (tag.isNotEmpty) {
+            tags.putIfAbsent(tag.toLowerCase(), () => tag);
+          }
+        }
+      }
+      _availableTags = tags.values.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
       await refreshFilteredList();
     });
   }
@@ -66,6 +83,7 @@ class DocumentController extends ChangeNotifier {
     try {
       _documents = await searchService.filterDocuments(
         query: _searchQuery,
+        tag: _selectedTag,
         subjectFk: _selectedSubjectFk,
         documentType: _selectedDocumentType,
         studyStatus: _selectedStudyStatus,
@@ -81,6 +99,11 @@ class DocumentController extends ChangeNotifier {
 
   void setSearchQuery(String query) {
     _searchQuery = query;
+    refreshFilteredList();
+  }
+
+  void setSelectedTag(String? tag) {
+    _selectedTag = tag;
     refreshFilteredList();
   }
 

@@ -432,6 +432,49 @@ class _HomeScreenContentState extends State<_HomeScreenContent> {
                               ),
                             ),
 
+                            if (_controller.availableTags.isNotEmpty)
+                              SizedBox(
+                                height: 48,
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
+                                  children: [
+                                    FilterChip(
+                                      avatar: const Icon(Icons.tag, size: 16),
+                                      label: const Text('Tất cả tag'),
+                                      selected: _controller.selectedTag == null,
+                                      onSelected: (_) =>
+                                          _controller.setSelectedTag(null),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ..._controller.availableTags.map((tag) {
+                                      final isSelected =
+                                          _controller.selectedTag == tag;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
+                                        ),
+                                        child: FilterChip(
+                                          avatar: const Icon(
+                                            Icons.tag,
+                                            size: 16,
+                                          ),
+                                          label: Text(tag),
+                                          selected: isSelected,
+                                          onSelected: (selected) =>
+                                              _controller.setSelectedTag(
+                                                selected ? tag : null,
+                                              ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              ),
+
                             // Danh sách tài liệu
                             Expanded(
                               child: _controller.isLoading

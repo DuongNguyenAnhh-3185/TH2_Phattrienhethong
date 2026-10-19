@@ -13,6 +13,7 @@ abstract class IDocumentRepository {
   Future<void> permanentlyDeleteDocument(String documentPk);
   Future<List<DocumentEntity>> searchAndFilterDocuments({
     String? query,
+    String? tag,
     String? subjectFk,
     String? documentType,
     String? studyStatus,
