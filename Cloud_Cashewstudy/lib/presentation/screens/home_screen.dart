@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../domain/entities/document_entity.dart';
@@ -14,32 +15,38 @@ import 'trash_screen.dart';
 import 'firebase_cloud_screen.dart';
 
 /// Màn hình chính của ứng dụng Quản lý Tài liệu Học tập (CashewDoc)
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider<DocumentController>(
+      create: (_) => DocumentController(
+        documentService: ServiceLocator.instance.documentService,
+        subjectService: ServiceLocator.instance.subjectService,
+        searchService: ServiceLocator.instance.searchService,
+      ),
+      child: const _HomeScreenContent(),
+    );
+  }
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  late final DocumentController _controller;
+class _HomeScreenContent extends StatefulWidget {
+  const _HomeScreenContent();
+
+  @override
+  State<_HomeScreenContent> createState() => _HomeScreenContentState();
+}
+
+class _HomeScreenContentState extends State<_HomeScreenContent> {
   final TextEditingController _searchEditController = TextEditingController();
   int _selectedDestination = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = DocumentController(
-      documentService: ServiceLocator.instance.documentService,
-      subjectService: ServiceLocator.instance.subjectService,
-      searchService: ServiceLocator.instance.searchService,
-    );
-  }
+  DocumentController get _controller => context.read<DocumentController>();
 
   @override
   void dispose() {
     _searchEditController.dispose();
-    _controller.dispose();
     super.dispose();
   }
 
@@ -119,9 +126,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
+    return Consumer<DocumentController>(
+      builder: (context, _, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),
           appBar: AppBar(
