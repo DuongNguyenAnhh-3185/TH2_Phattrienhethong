@@ -1,0 +1,49 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Hàm tiện ích xác thực người dùng
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Kiểm tra định dạng file hợp lệ cho hệ thống Quản lý tài liệu (DMS)
+    function isValidContentType() {
+      return request.resource.contentType.matches('application/pdf')
+          || request.resource.contentType.matches('application/msword')
+          || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+          || request.resource.contentType.matches('application/vnd.ms-excel')
+          || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          || request.resource.contentType.matches('application/vnd.ms-powerpoint')
+          || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.presentationml.presentation')
+          || request.resource.contentType.matches('text/plain')
+          || request.resource.contentType.matches('image/.*');
+    }
+    
+    // Giới hạn kích thước file tải lên tối đa 25MB
+    function isValidFileSize() {
+      return request.resource.size <= 25 * 1024 * 1024; // 25MB
+    }
+
+    // Quy tắc lưu trữ tài liệu người dùng: documents/{userId}/{fileName}
+    match /documents/{userId}/{fileName} {
+      // 1. Cho phép đọc file nếu đã đăng nhập và file thuộc về chính user đó
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // 2. Cho phép upload file mới nếu đúng user id, file <= 25MB và loại file hợp lệ
+      allow create: if isAuthenticated()
+                   && request.auth.uid == userId
+                   && isValidFileSize()
+                   && isValidContentType();
+
+      // 3. Cho phép cập nhật lại file nếu giữ đúng chủ sở hữu và kích thước hợp lệ
+      allow update: if isAuthenticated()
+                   && request.auth.uid == userId
+                   && isValidFileSize()
+                   && isValidContentType();
+
+      // 4. Cho phép xóa file nếu đúng là chủ sở hữu
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

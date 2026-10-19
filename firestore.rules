@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Hàm tiện ích kiểm tra xác thực người dùng
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Hàm kiểm tra quyền sở hữu tài liệu
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Quy tắc bảo mật cho Collection 'documents'
+    match /documents/{documentId} {
+      // 1. Cho phép đọc nếu người dùng đã đăng nhập và là chủ sở hữu của tài nguyên
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
+      
+      // 2. Cho phép tạo mới nếu người dùng hợp lệ và userId trong payload trùng với auth.uid
+      allow create: if isAuthenticated() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 255
+        && request.resource.data.storagePath is string
+        && request.resource.data.fileSize is int
+        && request.resource.data.fileSize <= 26214400 // 25MB
+        && request.resource.data.createdAt != null;
+        
+      // 3. Cho phép cập nhật nếu là chủ sở hữu và không sửa đổi userId gốc
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+        
+      // 4. Cho phép xóa nếu đúng là chủ sở hữu tài liệu
+      allow delete: if isOwner(resource.data.userId);
+    }
+    
+    // Collection users (nếu có lưu profile người dùng)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}
