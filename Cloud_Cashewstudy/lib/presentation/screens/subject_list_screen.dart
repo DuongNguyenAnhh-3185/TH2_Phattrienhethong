@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+
 import '../../core/constants/app_constants.dart';
 import '../../domain/entities/subject_entity.dart';
 import '../../service_locator.dart';
+import '../widgets/responsive_content.dart';
 
 /// Màn hình Quản lý danh sách Môn học
 class SubjectListScreen extends StatefulWidget {
@@ -75,9 +77,12 @@ class _SubjectListScreenState extends State<SubjectListScreen> {
             child: const Text('Hủy'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppConstants.primaryColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+            ),
             onPressed: () async {
-              if (codeCtrl.text.trim().isEmpty || nameCtrl.text.trim().isEmpty) {
+              if (codeCtrl.text.trim().isEmpty ||
+                  nameCtrl.text.trim().isEmpty) {
                 return;
               }
               Navigator.pop(ctx);
@@ -105,41 +110,47 @@ class _SubjectListScreenState extends State<SubjectListScreen> {
         backgroundColor: AppConstants.primaryColor,
         foregroundColor: Colors.white,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _subjects.length,
-              itemBuilder: (context, index) {
-                final sub = _subjects[index];
-                return Card(
-                  elevation: 0,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.grey.withAlpha(40)),
-                  ),
-                  color: Colors.white,
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: const Color(0xFFDBEAFE),
-                      child: const Icon(Icons.school, color: AppConstants.primaryColor),
+      body: ResponsiveContent(
+        maxWidth: 1000,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _subjects.length,
+                itemBuilder: (context, index) {
+                  final sub = _subjects[index];
+                  return Card(
+                    elevation: 0,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.grey.withAlpha(40)),
                     ),
-                    title: Text(
-                      '${sub.code} - ${sub.name}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFFDBEAFE),
+                        child: const Icon(
+                          Icons.school,
+                          color: AppConstants.primaryColor,
+                        ),
+                      ),
+                      title: Text(
+                        '${sub.code} - ${sub.name}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: sub.instructor.isNotEmpty
+                          ? Text('GV: ${sub.instructor}')
+                          : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        onPressed: () => _showAddSubjectDialog(sub),
+                      ),
                     ),
-                    subtitle: sub.instructor.isNotEmpty
-                        ? Text('GV: ${sub.instructor}')
-                        : null,
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit_outlined, size: 20),
-                      onPressed: () => _showAddSubjectDialog(sub),
-                    ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddSubjectDialog(),
         backgroundColor: AppConstants.primaryColor,
