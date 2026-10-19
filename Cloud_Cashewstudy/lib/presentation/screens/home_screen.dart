@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../domain/entities/document_entity.dart';
 import '../../service_locator.dart';
+import '../../services/auth_service.dart';
 import '../controllers/document_controller.dart';
 import '../widgets/document_card.dart';
 import '../widgets/responsive_content.dart';
@@ -151,6 +152,11 @@ class _HomeScreenContentState extends State<_HomeScreenContent> {
                     MaterialPageRoute(builder: (_) => const DashboardScreen()),
                   );
                 },
+              ),
+              IconButton(
+                tooltip: 'Đăng xuất',
+                icon: const Icon(Icons.logout, color: Colors.white),
+                onPressed: AuthService.instance.signOut,
               ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white),

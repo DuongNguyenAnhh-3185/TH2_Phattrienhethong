@@ -20,6 +20,26 @@ class AuthService {
   /// Stream theo dõi trạng thái đăng nhập thời gian thực
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) {
+    return _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+  }
+
+  Future<UserCredential> registerWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) {
+    return _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+  }
+
   /// Hàm xử lý đăng nhập bằng Google trong ứng dụng Flutter (Bước 6.5)
   Future<User?> signInWithGoogle() async {
     try {
@@ -28,16 +48,20 @@ class AuthService {
         final GoogleAuthProvider googleProvider = GoogleAuthProvider();
         googleProvider.addScope('email');
         googleProvider.addScope('profile');
-        final UserCredential userCredential = await _auth.signInWithPopup(googleProvider);
+        final UserCredential userCredential = await _auth.signInWithPopup(
+          googleProvider,
+        );
         return userCredential.user;
       }
 
       // 2. Trên Mobile / Desktop: Kích hoạt bảng chọn tài khoản Google
-      final GoogleSignInAccount? googleUser = await _googleSignInInstance.signIn();
+      final GoogleSignInAccount? googleUser = await _googleSignInInstance
+          .signIn();
       if (googleUser == null) return null; // Người dùng hủy đăng nhập
 
       // Lấy thông tin xác thực (token) từ Google
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
       // Tạo credential mới cho Firebase
       final credential = GoogleAuthProvider.credential(
@@ -46,7 +70,9 @@ class AuthService {
       );
 
       // Xác thực với Firebase và trả về thông tin user
-      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       return userCredential.user;
     } catch (e) {
       // ignore: avoid_print
@@ -57,14 +83,20 @@ class AuthService {
 
   /// Đăng xuất khỏi Google và Firebase
   Future<void> signOut() async {
-    try {
-      if (!kIsWeb) {
+    if (!kIsWeb) {
+      try {
         await _googleSignInInstance.signOut();
+      } catch (e) {
+        // ignore: avoid_print
+        print("Lỗi đăng xuất Google: $e");
       }
+    }
+
+    try {
       await _auth.signOut();
     } catch (e) {
       // ignore: avoid_print
-      print("Lỗi đăng xuất: $e");
+      print("Lỗi đăng xuất Firebase: $e");
     }
   }
 }

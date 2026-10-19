@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
 import 'core/constants/app_constants.dart';
-import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/auth_gate.dart';
 import 'service_locator.dart';
 
 void main() async {
@@ -57,7 +57,7 @@ class CashewDocApp extends StatelessWidget {
           centerTitle: false,
         ),
       ),
-      home: const HomeScreen(),
+      home: const AuthGate(),
     );
   }
 }
