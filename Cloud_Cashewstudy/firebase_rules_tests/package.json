@@ -1,0 +1,12 @@
+{
+  "name": "study-doc-manager-firebase-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx --yes firebase-tools@15.34.0 emulators:exec --project demo-study-doc-manager --only firestore,storage --config ../firebase.json \"node --test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0"
+  }
+}

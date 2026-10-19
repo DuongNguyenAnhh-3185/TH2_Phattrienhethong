@@ -1,0 +1,24 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function ownsDocument(ownerId, documentId) {
+      return request.auth != null
+        && request.auth.uid == ownerId
+        && firestore.get(/databases/(default)/documents/documents/$(documentId)).data.ownerId == ownerId;
+    }
+
+    function hasApprovedRequest(ownerId, documentId) {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/documents/$(documentId)).data.ownerId == ownerId
+        && firestore.get(/databases/(default)/documents/documents/$(documentId)/borrowRequests/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    match /documents/{ownerId}/{documentId}/{fileName} {
+      allow read: if ownsDocument(ownerId, documentId)
+        || hasApprovedRequest(ownerId, documentId);
+      allow create, update: if ownsDocument(ownerId, documentId)
+        && request.resource.size <= 50 * 1024 * 1024;
+      allow delete: if ownsDocument(ownerId, documentId);
+    }
+  }
+}

@@ -1,9 +1,8 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../services/auth_service.dart';
 import '../../services/cloud_document_service.dart';
 
@@ -30,13 +29,19 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
 
   Future<void> _pickFile() async {
     try {
-      final files = await FilePicker.pickFiles(
-        type: FileType.any,
-      );
+      final files = await FilePicker.pickFiles(type: FileType.any);
 
       if (files.isNotEmpty) {
         final f = files.first;
-        final size = f.lengthSync() ?? (await f.length()) ?? 0;
+        final size = await f.length() ?? 0;
+        if (size > 50 * 1024 * 1024) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Tệp phải nhỏ hơn 50 MB.')),
+            );
+          }
+          return;
+        }
         setState(() {
           _selectedFile = f;
           _selectedFileSize = size;
@@ -44,9 +49,8 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi chọn tệp: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Lỗi chọn tệp: $e')));
       }
     }
   }
@@ -62,7 +66,9 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
 
     if (_selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng chọn một tệp tài liệu để tải lên!')),
+        const SnackBar(
+          content: Text('Vui lòng chọn một tệp tài liệu để tải lên!'),
+        ),
       );
       return;
     }
@@ -72,26 +78,32 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
     });
 
     try {
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${_selectedFile!.name}';
-      String downloadUrl;
+      final selectedFile = _selectedFile!;
+      final bytes = await selectedFile.readAsBytes();
 
-      if (_selectedFile!.path != null && !kIsWeb) {
-        downloadUrl = await CloudDocumentService.instance.uploadDocumentFile(
-          File(_selectedFile!.path!),
-          fileName,
+      final documentId = await CloudDocumentService.instance
+          .createDocumentMetadata(
+            title: title,
+            ownerId: user.uid,
+            ownerName: user.displayName ?? 'Người dùng',
+            ownerEmail: user.email ?? '',
+            fileName: selectedFile.name,
+            fileSizeBytes: _selectedFileSize,
+          );
+      try {
+        final storageName =
+            '${DateTime.now().microsecondsSinceEpoch}_'
+            '${selectedFile.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}';
+        await CloudDocumentService.instance.uploadDocumentBytes(
+          bytes: bytes,
+          ownerId: user.uid,
+          documentId: documentId,
+          fileName: storageName,
         );
-      } else {
-        downloadUrl = "https://firebasestorage.googleapis.com/v0/b/device-streaming-33cac12e.firebasestorage.app/o/documents%2F$fileName?alt=media";
+      } catch (_) {
+        await CloudDocumentService.instance.deleteDocumentMetadata(documentId);
+        rethrow;
       }
-
-      await CloudDocumentService.instance.saveDocumentMetadata(
-        title,
-        downloadUrl,
-        user.uid,
-        fileName: _selectedFile!.name,
-        fileSizeBytes: _selectedFileSize,
-        uploaderEmail: user.email,
-      );
 
       _titleController.clear();
       setState(() {
@@ -102,7 +114,7 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Tải tệp lên Cloud và lưu metadata thành công!'),
+            content: Text('Đã tải tài liệu riêng tư lên Cloud.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -123,6 +135,227 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
         });
       }
     }
+  }
+
+  Future<void> _downloadDocument(String storagePath, String fileName) async {
+    try {
+      final bytes = await CloudDocumentService.instance.downloadDocumentBytes(
+        storagePath,
+      );
+      await FilePicker.saveFile(fileName: fileName, bytes: bytes);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể tải tài liệu: $e')));
+      }
+    }
+  }
+
+  Future<void> _requestBorrow(String documentId, User user) async {
+    try {
+      await CloudDocumentService.instance.requestBorrow(
+        documentId: documentId,
+        requesterId: user.uid,
+        requesterName: user.displayName ?? 'Người dùng',
+        requesterEmail: user.email ?? '',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã gửi yêu cầu mượn tài liệu.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Không thể gửi yêu cầu: $e')));
+      }
+    }
+  }
+
+  void _showBorrowRequests(String documentId, String title) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Yêu cầu mượn: $title'),
+        content: SizedBox(
+          width: 420,
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: CloudDocumentService.instance.getBorrowRequestsStream(
+              documentId,
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text('Không thể tải yêu cầu: ${snapshot.error}');
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final pendingRequests = snapshot.data!.docs
+                  .where((request) => request.data()['status'] == 'pending')
+                  .toList();
+              if (pendingRequests.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text('Hiện không có yêu cầu đang chờ duyệt.'),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                itemCount: pendingRequests.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final request = pendingRequests[index];
+                  final data = request.data();
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(data['requesterName'] ?? 'Người dùng'),
+                    subtitle: Text(data['requesterEmail'] ?? ''),
+                    trailing: Wrap(
+                      children: [
+                        IconButton(
+                          tooltip: 'Từ chối',
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: () => _reviewBorrowRequest(
+                            documentId,
+                            request.id,
+                            approve: false,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Phê duyệt',
+                          icon: const Icon(Icons.check, color: Colors.green),
+                          onPressed: () => _reviewBorrowRequest(
+                            documentId,
+                            request.id,
+                            approve: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reviewBorrowRequest(
+    String documentId,
+    String requesterId, {
+    required bool approve,
+  }) async {
+    try {
+      await CloudDocumentService.instance.reviewBorrowRequest(
+        documentId: documentId,
+        requesterId: requesterId,
+        approve: approve,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể cập nhật yêu cầu: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildAccessAction({
+    required String documentId,
+    required Map<String, dynamic> data,
+    required User user,
+  }) {
+    final ownerId = (data['ownerId'] ?? data['uploadedBy'] ?? '').toString();
+    final storagePath = (data['storagePath'] ?? '').toString();
+    final isReady = data['uploadStatus'] == 'ready' && storagePath.isNotEmpty;
+    if (!isReady) {
+      return const Tooltip(
+        message: 'Tài liệu chưa có tệp riêng tư được tải lên',
+        child: Icon(Icons.lock_clock_outlined),
+      );
+    }
+
+    if (ownerId == user.uid) {
+      return Wrap(
+        spacing: 0,
+        children: [
+          IconButton(
+            tooltip: 'Tải tài liệu của tôi',
+            icon: const Icon(Icons.download_outlined),
+            onPressed: () => _downloadDocument(
+              storagePath,
+              data['fileName']?.toString() ?? 'tai_lieu',
+            ),
+          ),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: CloudDocumentService.instance.getBorrowRequestsStream(
+              documentId,
+            ),
+            builder: (context, snapshot) {
+              final pendingCount =
+                  snapshot.data?.docs
+                      .where((request) => request.data()['status'] == 'pending')
+                      .length ??
+                  0;
+              return IconButton(
+                tooltip: 'Yêu cầu mượn tài liệu',
+                onPressed: () => _showBorrowRequests(
+                  documentId,
+                  data['title']?.toString() ?? 'Tài liệu',
+                ),
+                icon: Badge(
+                  isLabelVisible: pendingCount > 0,
+                  label: Text('$pendingCount'),
+                  child: const Icon(Icons.notifications_outlined),
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: CloudDocumentService.instance.getBorrowRequestStream(
+        documentId,
+        user.uid,
+      ),
+      builder: (context, snapshot) {
+        final status = snapshot.data?.data()?['status'];
+        if (status == 'approved') {
+          return IconButton(
+            tooltip: 'Tải tài liệu đã được duyệt',
+            icon: const Icon(Icons.download_outlined, color: Colors.green),
+            onPressed: () => _downloadDocument(
+              storagePath,
+              data['fileName']?.toString() ?? 'tai_lieu',
+            ),
+          );
+        }
+        if (status == 'pending') {
+          return const Tooltip(
+            message: 'Yêu cầu đang chờ chủ sở hữu duyệt',
+            child: Icon(Icons.hourglass_top),
+          );
+        }
+        return IconButton(
+          tooltip: status == 'rejected' ? 'Gửi lại yêu cầu' : 'Yêu cầu mượn',
+          icon: Icon(
+            status == 'rejected' ? Icons.refresh : Icons.menu_book_outlined,
+          ),
+          onPressed: () => _requestBorrow(documentId, user),
+        );
+      },
+    );
   }
 
   @override
@@ -166,7 +399,10 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                             child: Text(
                               'Vui lòng đăng nhập bằng Google để sử dụng tính năng tải và quản lý tài liệu đám mây.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 15, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Colors.grey,
+                              ),
                             ),
                           ),
                         ),
@@ -213,7 +449,10 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black87,
                   elevation: 1,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   side: const BorderSide(color: Colors.grey, width: 0.5),
                 ),
                 icon: _isSigningIn
@@ -229,10 +468,13 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                     : () async {
                         setState(() => _isSigningIn = true);
                         try {
-                          final signedUser = await AuthService.instance.signInWithGoogle();
+                          final signedUser = await AuthService.instance
+                              .signInWithGoogle();
                           if (signedUser == null && mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Đã hủy đăng nhập Google')),
+                              const SnackBar(
+                                content: Text('Đã hủy đăng nhập Google'),
+                              ),
                             );
                           }
                         } finally {
@@ -246,8 +488,12 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
-                    child: user.photoURL == null ? Text(user.displayName?[0] ?? 'U') : null,
+                    backgroundImage: user.photoURL != null
+                        ? NetworkImage(user.photoURL!)
+                        : null,
+                    child: user.photoURL == null
+                        ? Text(user.displayName?[0] ?? 'U')
+                        : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -256,15 +502,24 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                       children: [
                         Text(
                           user.displayName ?? 'Người dùng',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                         Text(
                           user.email ?? '',
-                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 13,
+                          ),
                         ),
                         Text(
                           'UID: ${user.uid}',
-                          style: const TextStyle(color: Colors.grey, fontSize: 11),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -327,8 +582,12 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                         ? '${_selectedFile!.name} (${(_selectedFileSize / 1024).toStringAsFixed(1)} KB)'
                         : 'Chưa chọn tệp',
                     style: TextStyle(
-                      fontStyle: _selectedFile != null ? FontStyle.normal : FontStyle.italic,
-                      color: _selectedFile != null ? Colors.black87 : Colors.grey,
+                      fontStyle: _selectedFile != null
+                          ? FontStyle.normal
+                          : FontStyle.italic,
+                      color: _selectedFile != null
+                          ? Colors.black87
+                          : Colors.grey,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -349,11 +608,16 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
                       )
                     : const Icon(Icons.cloud_done),
                 label: Text(
-                  _isUploading ? 'Đang tải lên Firebase...' : 'Tải lên Storage & Lưu Firestore',
+                  _isUploading
+                      ? 'Đang tải lên Firebase...'
+                      : 'Tải lên Storage & Lưu Firestore',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -423,40 +687,47 @@ class _FirebaseCloudScreenState extends State<FirebaseCloudScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: docs.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final data = docs[index].data();
                     final title = data['title'] ?? 'Không tiêu đề';
-                    final fileUrl = data['fileUrl'] ?? '';
-                    final uploadedBy = data['uploadedBy'] ?? '';
+                    final ownerName =
+                        data['ownerName'] ??
+                        data['uploaderEmail'] ??
+                        'Người dùng';
                     final createdAt = data['createdAt'] as Timestamp?;
                     final dateStr = createdAt != null
-                        ? createdAt.toDate().toLocal().toString().split('.').first
+                        ? createdAt
+                              .toDate()
+                              .toLocal()
+                              .toString()
+                              .split('.')
+                              .first
                         : 'Vừa xong';
 
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const CircleAvatar(
                         backgroundColor: Color(0xFFE3F2FD),
-                        child: Icon(Icons.description, color: Color(0xFF1E88E5)),
+                        child: Icon(
+                          Icons.description,
+                          color: Color(0xFF1E88E5),
+                        ),
                       ),
-                      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('Đăng bởi: $uploadedBy\nThời gian: $dateStr'),
+                      title: Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'Chủ sở hữu: $ownerName\nThời gian: $dateStr',
+                      ),
                       isThreeLine: true,
-                      trailing: fileUrl.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                              tooltip: 'Link Firebase Storage',
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('URL: $fileUrl'),
-                                    duration: const Duration(seconds: 4),
-                                  ),
-                                );
-                              },
-                            )
-                          : null,
+                      trailing: _buildAccessAction(
+                        documentId: docs[index].id,
+                        data: data,
+                        user: AuthService.instance.currentUser!,
+                      ),
                     );
                   },
                 );

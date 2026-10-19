@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsDocument(documentId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId == request.auth.uid;
+    }
+
+    match /documents/{documentId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.uploadStatus == 'uploading';
+      allow update: if ownsDocument(documentId)
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if ownsDocument(documentId);
+
+      match /borrowRequests/{requesterId} {
+        allow read: if signedIn()
+          && (request.auth.uid == requesterId || ownsDocument(documentId));
+
+        allow create: if signedIn()
+          && request.auth.uid == requesterId
+          && get(/databases/$(database)/documents/documents/$(documentId)).data.ownerId != request.auth.uid
+          && get(/databases/$(database)/documents/documents/$(documentId)).data.uploadStatus == 'ready'
+          && request.resource.data.requesterId == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if signedIn() && (
+          (ownsDocument(documentId)
+            && resource.data.status == 'pending'
+            && request.resource.data.status in ['approved', 'rejected']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt']))
+          || (request.auth.uid == requesterId
+            && resource.data.status == 'rejected'
+            && request.resource.data.status == 'pending'
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'createdAt', 'reviewedAt']))
+        );
+
+        allow delete: if signedIn()
+          && request.auth.uid == requesterId
+          && resource.data.status == 'pending';
+      }
+    }
+  }
+}
